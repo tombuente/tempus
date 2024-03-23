@@ -1,31 +1,31 @@
 package bot
 
 type guild struct {
-	ID      int64  `db:"id"`
-	GuildID string `db:"guild_id"`
+	ID               int64  `db:"id"`
+	GuildSnowflakeID string `db:"guild_snowflake_id"`
 }
 
 type guildParams struct {
-	guildID string
+	guildSnowflakeID string
 }
 
 type guildFilter struct {
-	id      int64
-	guildID string
-	limit   uint64
+	id               int64
+	guildSnowflakeID string
+	limit            uint64
 }
 
 type creatorChannel struct {
 	ID                 int64  `db:"id"`
 	GuildID            int64  `db:"guild_id"`
-	ChannelSnowflakeID string `db:"channel_id"`
-	MaxUsers           int64  `db:"max_users"`
+	ChannelSnowflakeID string `db:"channel_snowflake_id"`
+	UserLimit          int64  `db:"user_limit"`
 }
 
 type creatorChannelParams struct {
 	guildID            int64
 	channelSnowflakeID string
-	maxUsers           int64
+	userLimit          int64
 }
 
 type creatorChannelFilter struct {
@@ -38,8 +38,8 @@ type creatorChannelFilter struct {
 type temporaryVoiceChannel struct {
 	ID                 int64  `db:"id"`
 	GuildID            int64  `db:"guild_id"`
-	ChannelSnowflakeID string `db:"channel_id"`
-	OwnerID            int64  `db:"owner_id"`
+	ChannelSnowflakeID string `db:"channel_snowflake_id"`
+	OwnerSnowflakeID   string `db:"owner_snowflake_id"`
 }
 
 type temporaryVoiceChannelParams struct {
@@ -50,7 +50,7 @@ type temporaryVoiceChannelParams struct {
 
 type temporaryVoiceChannelFilter struct {
 	id                 int64
-	guildID            uint64
+	guildID            int64
 	channelSnowflakeID string
 	ownerSnowflakeID   string
 	limit              uint64

@@ -92,14 +92,14 @@ func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *d
 }
 
 func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
-	guild, ok, err := b.db.guild(guildFilter{guildID: e.GuildID})
+	guild, ok, err := b.db.guild(guildFilter{guildSnowflakeID: e.GuildID})
 	if err != nil {
 		b.interactionRespondWithMessage("Internal error", s, e)
 		slog.Error("Unable to get guild from database", "event", "InteractionCreate", "command", "add", "guild_id", e.GuildID, "error", err)
 		return
 	}
 	if !ok {
-		guild, err = b.db.createGuild(guildParams{guildID: e.GuildID})
+		guild, err = b.db.createGuild(guildParams{guildSnowflakeID: e.GuildID})
 		if err != nil {
 			b.interactionRespondWithMessage("Internal error", s, e)
 			slog.Error("Unable to create guild in database", "event", "InteractionCreate", "command", "add", "guild_id", e.GuildID, "error", err)
@@ -113,7 +113,6 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 		slog.Error("Unable to create creator channel", "event", "InteractionCreate", "command", "add", "guild_id", e.GuildID, "error", err)
 		return
 	}
-	fmt.Println(channel.Position)
 
 	_, err = b.db.createCreatorChannel(creatorChannelParams{guildID: guild.ID, channelSnowflakeID: channel.ID})
 	if err != nil {
@@ -127,7 +126,7 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 }
 
 func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
-	guild, ok, err := b.db.guild(guildFilter{guildID: e.GuildID})
+	guild, ok, err := b.db.guild(guildFilter{guildSnowflakeID: e.GuildID})
 	if err != nil {
 		slog.Error("Unable to get guild from database", "event", "VoiceStateUpdate", "guild_id", e.GuildID, "error", err)
 		return
@@ -172,14 +171,14 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, s *dgo.Session, e 
 		Name: fmt.Sprintf("%v's Channel", username),
 		Type: dgo.ChannelTypeGuildVoice,
 	}
-	tempVoiceChannel, err := s.GuildChannelCreateComplex(guild.GuildID, channelCreateData)
+	tempVoiceChannel, err := s.GuildChannelCreateComplex(guild.GuildSnowflakeID, channelCreateData)
 	if err != nil {
 		slog.Error("Unable to create temporary voice channel", "event", "VoiceStateUpdate", "action", "JoinCreatorChannel", "guild_id", e.GuildID, "error", err)
 		return
 	}
 
 	// Move user before adding channel to database to reduce latency
-	err = s.GuildMemberMove(guild.GuildID, e.UserID, &tempVoiceChannel.ID)
+	err = s.GuildMemberMove(guild.GuildSnowflakeID, e.UserID, &tempVoiceChannel.ID)
 	if err != nil {
 		slog.Error("Unable to move user to temporary voice channel", "event", "VoiceStateUpdate", "action", "JoinCreatorChannel", "guild_id", e.GuildID, "error", err)
 		return
