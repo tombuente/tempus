@@ -72,7 +72,7 @@ func (db database) guilds(filter guildFilter) ([]guild, bool, error) {
 	return guilds, true, nil
 }
 
-func (db database) createServer(params guildParams) (guild, error) {
+func (db database) createGuild(params guildParams) (guild, error) {
 	query, args, err := squirrel.Insert("guilds").
 		Columns("guild_id").
 		Values(params.guildID).
@@ -93,70 +93,70 @@ func (db database) createServer(params guildParams) (guild, error) {
 	return i, nil
 }
 
-// func (db database) creatorChannel(filter creatorChannelFilter) (creatorChannel, bool, error) {
-// 	filter.limit = 1
+func (db database) creatorChannel(filter creatorChannelFilter) (creatorChannel, bool, error) {
+	filter.limit = 1
 
-// 	channels, ok, err := db.creatorChannels(filter)
-// 	if err != nil {
-// 		return creatorChannel{}, ok, nil
-// 	}
-// 	if !ok {
-// 		return creatorChannel{}, ok, nil
-// 	}
+	channels, ok, err := db.creatorChannels(filter)
+	if err != nil {
+		return creatorChannel{}, ok, nil
+	}
+	if !ok {
+		return creatorChannel{}, ok, nil
+	}
 
-// 	return channels[0], ok, nil
-// }
+	return channels[0], ok, nil
+}
 
-// func (db database) creatorChannels(filter creatorChannelFilter) ([]creatorChannel, bool, error) {
-// 	builder := squirrel.Select("*").From("creator_channels")
+func (db database) creatorChannels(filter creatorChannelFilter) ([]creatorChannel, bool, error) {
+	builder := squirrel.Select("*").From("creator_channels")
 
-// 	if filter.id != 0 {
-// 		builder = builder.Where(squirrel.Eq{"id": filter.id})
-// 	}
-// 	if filter.guildID != 0 {
-// 		builder = builder.Where(squirrel.Eq{"guild_id": filter.guildID})
-// 	}
-// 	if filter.channelID != "" {
-// 		builder = builder.Where(squirrel.Eq{"channel_id": filter.guildID})
-// 	}
+	if filter.id != 0 {
+		builder = builder.Where(squirrel.Eq{"id": filter.id})
+	}
+	if filter.guildID != 0 {
+		builder = builder.Where(squirrel.Eq{"guild_id": filter.guildID})
+	}
+	if filter.channelSnowflakeID != "" {
+		builder = builder.Where(squirrel.Eq{"channel_id": filter.channelSnowflakeID})
+	}
 
-// 	if filter.limit != 0 {
-// 		builder = builder.Limit(filter.limit)
-// 	}
+	if filter.limit != 0 {
+		builder = builder.Limit(filter.limit)
+	}
 
-// 	query, args, err := builder.ToSql()
-// 	if err != nil {
-// 		return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
-// 	}
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
+	}
 
-// 	rows, err := db.db.Queryx(query, args...)
-// 	if err != nil {
-// 		return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
-// 	}
-// 	defer rows.Close()
+	rows, err := db.db.Queryx(query, args...)
+	if err != nil {
+		return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
+	}
+	defer rows.Close()
 
-// 	var channels []creatorChannel
-// 	for rows.Next() {
-// 		var i creatorChannel
-// 		err := rows.StructScan(&i)
-// 		if err != nil {
-// 			return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
-// 		}
+	var channels []creatorChannel
+	for rows.Next() {
+		var i creatorChannel
+		err := rows.StructScan(&i)
+		if err != nil {
+			return []creatorChannel{}, false, joinErrors(ErrSQLInternal, err)
+		}
 
-// 		channels = append(channels, i)
-// 	}
+		channels = append(channels, i)
+	}
 
-// 	if len(channels) == 0 {
-// 		return []creatorChannel{}, false, nil
-// 	}
+	if len(channels) == 0 {
+		return []creatorChannel{}, false, nil
+	}
 
-// 	return channels, true, nil
-// }
+	return channels, true, nil
+}
 
 func (db database) createCreatorChannel(params creatorChannelParams) (creatorChannel, error) {
 	query, args, err := squirrel.Insert("creator_channels").
 		Columns("guild_id, channel_id, max_users").
-		Values(params.guildID, params.channelID, params.maxUsers).
+		Values(params.guildID, params.channelSnowflakeID, params.maxUsers).
 		Suffix("RETURNING *").
 		ToSql()
 	if err != nil {
@@ -169,6 +169,90 @@ func (db database) createCreatorChannel(params creatorChannelParams) (creatorCha
 	err = row.StructScan(&i)
 	if err != nil {
 		return creatorChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	return i, nil
+}
+
+func (db database) temporaryVoiceChannel(filter temporaryVoiceChannelFilter) (temporaryVoiceChannel, bool, error) {
+	filter.limit = 1
+
+	channels, ok, err := db.temporaryVoiceChannels(filter)
+	if err != nil {
+		return temporaryVoiceChannel{}, ok, nil
+	}
+	if !ok {
+		return temporaryVoiceChannel{}, ok, nil
+	}
+
+	return channels[0], ok, nil
+}
+
+func (db database) temporaryVoiceChannels(filter temporaryVoiceChannelFilter) ([]temporaryVoiceChannel, bool, error) {
+	builder := squirrel.Select("*").From("temporary_voice_channels")
+
+	if filter.id != 0 {
+		builder = builder.Where(squirrel.Eq{"id": filter.id})
+	}
+	if filter.guildID != 0 {
+		builder = builder.Where(squirrel.Eq{"guild_id": filter.guildID})
+	}
+	if filter.channelSnowflakeID != "" {
+		builder = builder.Where(squirrel.Eq{"channel_id": filter.channelSnowflakeID})
+	}
+	if filter.ownerSnowflakeID != "" {
+		builder = builder.Where(squirrel.Eq{"owner_id": filter.ownerSnowflakeID})
+	}
+
+	if filter.limit != 0 {
+		builder = builder.Limit(filter.limit)
+	}
+
+	query, args, err := builder.ToSql()
+	if err != nil {
+		return []temporaryVoiceChannel{}, false, joinErrors(ErrSQLInternal, err)
+	}
+
+	rows, err := db.db.Queryx(query, args...)
+	if err != nil {
+		return []temporaryVoiceChannel{}, false, joinErrors(ErrSQLInternal, err)
+	}
+	defer rows.Close()
+
+	var channels []temporaryVoiceChannel
+	for rows.Next() {
+		var i temporaryVoiceChannel
+		err := rows.StructScan(&i)
+		if err != nil {
+			return []temporaryVoiceChannel{}, false, joinErrors(ErrSQLInternal, err)
+		}
+
+		channels = append(channels, i)
+	}
+
+	if len(channels) == 0 {
+		return []temporaryVoiceChannel{}, false, nil
+	}
+
+	return channels, true, nil
+}
+
+func (db database) createTemporaryVoiceChannel(params temporaryVoiceChannelParams) (temporaryVoiceChannel, error) {
+	query, args, err := squirrel.Insert("temporary_voice_channels").
+		Columns("guild_id, channel_id, owner_id").
+		Values(params.guildID, params.channelSnowflakeID, params.ownerSnowflakeID).
+		Suffix("RETURNING *").
+		ToSql()
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	row := db.db.QueryRowx(query, args...)
+
+	var i temporaryVoiceChannel
+	err = row.StructScan(&i)
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
 	}
 
 	return i, nil

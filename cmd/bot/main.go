@@ -12,7 +12,7 @@ func main() {
 	token := os.Getenv("TEMPUS_TOKEN")
 	guildID := os.Getenv("TEMPUS_GUILD_ID")
 
-	db := sqlx.MustConnect("sqlite3", "data.sqlite3")
+	db := sqlx.MustConnect("sqlite3", "data.sqlite")
 
 	bot.Run(token, guildID, db)
 }
