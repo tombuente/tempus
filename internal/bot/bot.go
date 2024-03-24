@@ -40,11 +40,23 @@ func Run(token string, guildID string, db *sqlx.DB) {
 		session: session,
 	}
 
+	minValue := float64(0)
+
 	commands := map[string]commandWithHandler{
 		"add": {
 			command: &dgo.ApplicationCommand{
 				Name:        "add",
 				Description: "Add creator voice channel",
+				Options: []*dgo.ApplicationCommandOption{
+					{
+						Type:        dgo.ApplicationCommandOptionInteger,
+						Name:        "user-limit",
+						Description: "User limit",
+						MinValue:    &minValue,
+						MaxValue:    100,
+						Required:    false,
+					},
+				},
 			},
 			handler: b.interactionCreateAdd,
 		},
@@ -94,6 +106,11 @@ func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *d
 }
 
 func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
+	options := make(map[string]*dgo.ApplicationCommandInteractionDataOption, len(e.ApplicationCommandData().Options))
+	for _, option := range e.ApplicationCommandData().Options {
+		options[option.Name] = option
+	}
+
 	guild, ok, err := b.db.guild(guildFilter{guildSnowflakeID: e.GuildID})
 	if err != nil {
 		b.interactionRespondWithMessage("Internal error", s, e)
@@ -115,7 +132,15 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 		}
 	}
 
-	channel, err := s.GuildChannelCreate(e.GuildID, "Create Voice Channel", dgo.ChannelTypeGuildVoice)
+	data := dgo.GuildChannelCreateData{
+		Name: "Create Voice Channel",
+		Type: dgo.ChannelTypeGuildVoice,
+	}
+	if option, ok := options["user-limit"]; ok {
+		data.UserLimit = int(option.IntValue())
+	}
+
+	discordChannel, err := s.GuildChannelCreateComplex(e.GuildID, data)
 	if err != nil {
 		b.interactionRespondWithMessage("Unable to create channel", s, e)
 		slog.Error("Unable to create creator channel in database",
@@ -125,7 +150,14 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 		return
 	}
 
-	_, err = b.db.createCreatorChannel(creatorChannelParams{guildID: guild.ID, channelSnowflakeID: channel.ID})
+	params := creatorChannelParams{
+		guildID:            guild.ID,
+		channelSnowflakeID: discordChannel.ID,
+	}
+	if option, ok := options["user-limit"]; ok {
+		params.userLimit = option.IntValue()
+	}
+	_, err = b.db.createCreatorChannel(params)
 	if err != nil {
 		b.interactionRespondWithMessage("Internal error", s, e)
 		slog.Error("Unable to store creator channel in database",
@@ -163,7 +195,7 @@ func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	if userLeft || userMoved { // User left channel
 		slog.Info("User left voice channel",
 			"event", "VoiceStateUpdate",
-			"channel_snowflake_id", e.ChannelID)
+			"channel_snowflake_id", e.BeforeUpdate.ChannelID)
 		b.voiceStateUpdateLeave(s, e)
 	}
 
@@ -176,7 +208,7 @@ func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 }
 
 func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStateUpdate) {
-	_, ok, err := b.db.creatorChannel(creatorChannelFilter{channelSnowflakeID: e.ChannelID})
+	creatorChannel, ok, err := b.db.creatorChannel(creatorChannelFilter{channelSnowflakeID: e.ChannelID})
 	if err != nil {
 		slog.Error("Unable to get creator channel from database",
 			"event", "VoiceStateUpdate",
@@ -185,7 +217,7 @@ func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStat
 		return
 	}
 	if ok {
-		b.voiceStateUpdateJoinCreatorChannel(guild, s, e)
+		b.voiceStateUpdateJoinCreatorChannel(guild, creatorChannel, s, e)
 		return
 	}
 
@@ -203,7 +235,7 @@ func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStat
 	}
 }
 
-func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, s *dgo.Session, e *dgo.VoiceStateUpdate) {
+func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel creatorChannel, s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	username := e.Member.Nick
 	if username == "" {
 		username = e.Member.User.Username
@@ -212,6 +244,9 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, s *dgo.Session, e 
 	channelCreateData := dgo.GuildChannelCreateData{
 		Name: fmt.Sprintf("%v's Channel", username),
 		Type: dgo.ChannelTypeGuildVoice,
+	}
+	if creatorChannel.UserLimit > 0 {
+		channelCreateData.UserLimit = int(creatorChannel.UserLimit)
 	}
 	tempVoiceChannel, err := s.GuildChannelCreateComplex(e.GuildID, channelCreateData)
 	if err != nil {
