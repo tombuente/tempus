@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 
 	dgo "github.com/bwmarrin/discordgo"
 	"github.com/jmoiron/sqlx"
@@ -50,7 +51,7 @@ func Run(token string, guildID string, db *sqlx.DB) {
 				Options: []*dgo.ApplicationCommandOption{
 					{
 						Type:        dgo.ApplicationCommandOptionInteger,
-						Name:        "user-limit",
+						Name:        "limit",
 						Description: "User limit",
 						MinValue:    &minValue,
 						MaxValue:    100,
@@ -60,6 +61,21 @@ func Run(token string, guildID string, db *sqlx.DB) {
 			},
 			handler: b.interactionCreateAdd,
 		},
+		// "kick": {
+		// 	command: &dgo.ApplicationCommand{
+		// 		Name:        "kick",
+		// 		Description: "Kick user from temporary voice channel",
+		// 		Options: []*dgo.ApplicationCommandOption{
+		// 			{
+		// 				Type:        dgo.ApplicationCommandOptionMentionable,
+		// 				Name:        "user",
+		// 				Description: "User to kick",
+		// 				Required:    true,
+		// 			},
+		// 		},
+		// 	},
+		// 	handler: b.interactionCreateKick,
+		// },
 	}
 
 	b.session.AddHandler(func(s *dgo.Session, i *dgo.InteractionCreate) {
@@ -105,38 +121,30 @@ func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *d
 	})
 }
 
+func snowflakeToID(snowflake string) int64 {
+	id, err := strconv.ParseInt(snowflake, 10, 64)
+	if err != nil {
+		slog.Error("Unable to convert snowflake to int", "error", err)
+	}
+
+	return id
+}
+
+func idToSnowflake(id int64) string {
+	return fmt.Sprintf("%v", id)
+}
+
 func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 	options := make(map[string]*dgo.ApplicationCommandInteractionDataOption, len(e.ApplicationCommandData().Options))
 	for _, option := range e.ApplicationCommandData().Options {
 		options[option.Name] = option
 	}
 
-	guild, ok, err := b.db.guild(guildFilter{guildSnowflakeID: e.GuildID})
-	if err != nil {
-		b.interactionRespondWithMessage("Internal error", s, e)
-		slog.Error("Unable to get guild from database",
-			"event", "InteractionCreate",
-			"command", "add",
-			"error", err)
-		return
-	}
-	if !ok {
-		guild, err = b.db.createGuild(guildParams{guildSnowflakeID: e.GuildID})
-		if err != nil {
-			b.interactionRespondWithMessage("Internal error", s, e)
-			slog.Error("Unable to create guild in database",
-				"event", "InteractionCreate",
-				"command", "add",
-				"error", err)
-			return
-		}
-	}
-
 	data := dgo.GuildChannelCreateData{
 		Name: "Create Voice Channel",
 		Type: dgo.ChannelTypeGuildVoice,
 	}
-	if option, ok := options["user-limit"]; ok {
+	if option, ok := options["limit"]; ok {
 		data.UserLimit = int(option.IntValue())
 	}
 
@@ -151,16 +159,16 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 	}
 
 	params := creatorChannelParams{
-		guildID:            guild.ID,
-		channelSnowflakeID: discordChannel.ID,
+		id:      snowflakeToID(discordChannel.ID),
+		guildID: snowflakeToID(e.GuildID),
 	}
-	if option, ok := options["user-limit"]; ok {
+	if option, ok := options["limit"]; ok {
 		params.userLimit = option.IntValue()
 	}
 	_, err = b.db.createCreatorChannel(params)
 	if err != nil {
 		b.interactionRespondWithMessage("Internal error", s, e)
-		slog.Error("Unable to store creator channel in database",
+		slog.Error("Unable to create creator channel in database",
 			"event", "InteractionCreate",
 			"command", "add",
 			"error", err)
@@ -173,21 +181,44 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 		"command", "add")
 }
 
-func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
-	guild, ok, err := b.db.guild(guildFilter{guildSnowflakeID: e.GuildID})
-	if err != nil {
-		slog.Error("Unable to get guild from database",
-			"event", "VoiceStateUpdate",
-			"error", err)
-		return
-	}
-	if !ok {
-		slog.Info("Guild has not been set up yet",
-			"event", "VoiceStateUpdate",
-			"guild_snowflake_id", e.GuildID)
-		return
-	}
+// func (b *bot) interactionCreateKick(s *dgo.Session, e *dgo.InteractionCreate) {
+// 	options := make(map[string]*dgo.ApplicationCommandInteractionDataOption, len(e.ApplicationCommandData().Options))
+// 	for _, option := range e.ApplicationCommandData().Options {
+// 		options[option.Name] = option
+// 	}
 
+// 	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{ownerSnowflakeID: e.User.ID})
+// 	if err != nil {
+// 		b.interactionRespondWithMessage("Internal error", s, e)
+// 		slog.Error("Unable to get temporary voice channel from database",
+// 			"event", "InteractionCreate",
+// 			"command", "kick",
+// 			"error", err)
+// 		return
+// 	}
+// 	if !ok {
+// 		b.interactionRespondWithMessage("You do not own a channel", s, e)
+// 		slog.Info("User tried to kick but is not a channel owner",
+// 			"event", "InteractionCreate",
+// 			"command", "kick")
+// 		return
+// 	}
+
+// 	err = s.GuildMemberMove(e.GuildID, options["user"].StringValue(), nil)
+// 	if err != nil {
+// 		slog.Error("Unable to kick user",
+// 			"event", "InteractionCreate",
+// 			"command", "kick",
+// 			"error", err)
+// 		return
+// 	}
+
+// 	slog.Info("User kicked from temporary voice channel",
+// 		"event", "InteractionCreate",
+// 		"command", "kick")
+// }
+
+func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	userLeft := e.ChannelID == ""
 	userJoined := e.BeforeUpdate == nil
 	userMoved := !userLeft && !userJoined && e.ChannelID != e.BeforeUpdate.ChannelID
@@ -195,20 +226,20 @@ func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	if userLeft || userMoved { // User left channel
 		slog.Info("User left voice channel",
 			"event", "VoiceStateUpdate",
-			"channel_snowflake_id", e.BeforeUpdate.ChannelID)
+			"channel_id", e.BeforeUpdate.ChannelID)
 		b.voiceStateUpdateLeave(s, e)
 	}
 
 	if userJoined || userMoved { // User joined channel
 		slog.Info("User joined voice channel",
 			"event", "VoiceStateUpdate",
-			"channel_snowflake_id", e.ChannelID)
-		b.voiceStateUpdateJoin(guild, s, e)
+			"channel_id", e.ChannelID)
+		b.voiceStateUpdateJoin(s, e)
 	}
 }
 
-func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStateUpdate) {
-	creatorChannel, ok, err := b.db.creatorChannel(creatorChannelFilter{channelSnowflakeID: e.ChannelID})
+func (b *bot) voiceStateUpdateJoin(s *dgo.Session, e *dgo.VoiceStateUpdate) {
+	creatorChannel, ok, err := b.db.creatorChannel(creatorChannelFilter{id: snowflakeToID(e.ChannelID)})
 	if err != nil {
 		slog.Error("Unable to get creator channel from database",
 			"event", "VoiceStateUpdate",
@@ -217,11 +248,11 @@ func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStat
 		return
 	}
 	if ok {
-		b.voiceStateUpdateJoinCreatorChannel(guild, creatorChannel, s, e)
+		b.voiceStateUpdateJoinCreatorChannel(creatorChannel, s, e)
 		return
 	}
 
-	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{channelSnowflakeID: e.ChannelID})
+	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{id: snowflakeToID(e.ChannelID)})
 	if err != nil {
 		slog.Error("Unable to get temporary voice channel from database",
 			"event", "VoiceStateUpdate",
@@ -235,7 +266,7 @@ func (b *bot) voiceStateUpdateJoin(guild guild, s *dgo.Session, e *dgo.VoiceStat
 	}
 }
 
-func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel creatorChannel, s *dgo.Session, e *dgo.VoiceStateUpdate) {
+func (b *bot) voiceStateUpdateJoinCreatorChannel(creatorChannel creatorChannel, s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	username := e.Member.Nick
 	if username == "" {
 		username = e.Member.User.Username
@@ -248,7 +279,7 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel cre
 	if creatorChannel.UserLimit > 0 {
 		channelCreateData.UserLimit = int(creatorChannel.UserLimit)
 	}
-	tempVoiceChannel, err := s.GuildChannelCreateComplex(e.GuildID, channelCreateData)
+	discordChannel, err := s.GuildChannelCreateComplex(e.GuildID, channelCreateData)
 	if err != nil {
 		slog.Error("Unable to create Discord voice channel",
 			"event", "VoiceStateUpdate",
@@ -257,7 +288,12 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel cre
 		return
 	}
 
-	_, err = b.db.createTemporaryVoiceChannel(temporaryVoiceChannelParams{guildID: guild.ID, channelSnowflakeID: tempVoiceChannel.ID, ownerSnowflakeID: e.UserID})
+	params := temporaryVoiceChannelParams{
+		id:      snowflakeToID(discordChannel.ID),
+		guildID: snowflakeToID(e.GuildID),
+		ownerID: snowflakeToID(e.UserID),
+	}
+	_, err = b.db.createTemporaryVoiceChannel(params)
 	if err != nil {
 		slog.Error("Unable to create temporary voice channel in database",
 			"event", "VoiceStateUpdate",
@@ -265,7 +301,7 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel cre
 			"error", err)
 	}
 
-	err = s.GuildMemberMove(e.GuildID, e.UserID, &tempVoiceChannel.ID)
+	err = s.GuildMemberMove(e.GuildID, e.UserID, &discordChannel.ID)
 	if err != nil {
 		slog.Error("Unable to move user to temporary voice channel",
 			"event", "VoiceStateUpdate",
@@ -281,10 +317,10 @@ func (b *bot) voiceStateUpdateJoinCreatorChannel(guild guild, creatorChannel cre
 
 func (b *bot) voiceStateUpdateJoinTemporaryVoiceChannel(temporaryVoiceChannel temporaryVoiceChannel) {
 	params := temporaryVoiceChannelParams{
-		guildID:            temporaryVoiceChannel.GuildID,
-		channelSnowflakeID: temporaryVoiceChannel.ChannelSnowflakeID,
-		userCount:          temporaryVoiceChannel.UserCount + 1,
-		ownerSnowflakeID:   temporaryVoiceChannel.OwnerSnowflakeID,
+		id:        temporaryVoiceChannel.ID,
+		guildID:   temporaryVoiceChannel.GuildID,
+		userCount: temporaryVoiceChannel.UserCount + 1,
+		ownerID:   temporaryVoiceChannel.OwnerID,
 	}
 
 	_, err := b.db.updateTemporaryVoiceChannel(temporaryVoiceChannel.ID, params)
@@ -304,7 +340,7 @@ func (b *bot) voiceStateUpdateJoinTemporaryVoiceChannel(temporaryVoiceChannel te
 }
 
 func (b *bot) voiceStateUpdateLeave(s *dgo.Session, e *dgo.VoiceStateUpdate) {
-	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{channelSnowflakeID: e.BeforeUpdate.ChannelID})
+	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{id: snowflakeToID(e.BeforeUpdate.ChannelID)})
 	if err != nil {
 		slog.Error("Unable to get temporary voice channel from database",
 			"event", "VoiceStateUpdate",
@@ -320,18 +356,18 @@ func (b *bot) voiceStateUpdateLeave(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 
 func (b *bot) voiceStateUpdateLeaveTemporaryVoiceChannel(temporaryVoiceChannel temporaryVoiceChannel, s *dgo.Session) {
 	if temporaryVoiceChannel.UserCount-1 == 0 {
-		_, err := s.ChannelDelete(temporaryVoiceChannel.ChannelSnowflakeID)
+		_, err := s.ChannelDelete(idToSnowflake(temporaryVoiceChannel.ID))
 		if err != nil {
 			slog.Error("Unable to delete Discord channel",
 				"event", "VoiceStateUpdate",
 				"action", "LeaveTemporaryVoiceChannel",
-				"channel_snowflake_id", temporaryVoiceChannel.ChannelSnowflakeID,
+				"id", temporaryVoiceChannel.ID,
 				"error", err)
 		}
-		slog.Info("Deleted Discord channel",
+		slog.Info("Discord channel deleted",
 			"event", "VoiceStateUpdate",
 			"action", "LeaveTemporaryVoiceChannel",
-			"channel_snowflake_id", temporaryVoiceChannel.ChannelSnowflakeID)
+			"id", temporaryVoiceChannel.ID)
 
 		_, err = b.db.deleteTemporaryVoiceChannel(temporaryVoiceChannel.ID)
 		if err != nil {
@@ -342,7 +378,7 @@ func (b *bot) voiceStateUpdateLeaveTemporaryVoiceChannel(temporaryVoiceChannel t
 				"error", err)
 		}
 
-		slog.Info("Deleted temporary voice channel from database",
+		slog.Info("Temporary voice channel deleted from database",
 			"event", "VoiceStateUpdate",
 			"action", "LeaveTemporaryVoiceChannel",
 			"id", temporaryVoiceChannel.ID)
@@ -350,12 +386,11 @@ func (b *bot) voiceStateUpdateLeaveTemporaryVoiceChannel(temporaryVoiceChannel t
 	}
 
 	params := temporaryVoiceChannelParams{
-		guildID:            temporaryVoiceChannel.GuildID,
-		channelSnowflakeID: temporaryVoiceChannel.ChannelSnowflakeID,
-		userCount:          temporaryVoiceChannel.UserCount - 1,
-		ownerSnowflakeID:   temporaryVoiceChannel.OwnerSnowflakeID,
+		id:        temporaryVoiceChannel.ID,
+		guildID:   temporaryVoiceChannel.GuildID,
+		userCount: temporaryVoiceChannel.UserCount - 1,
+		ownerID:   temporaryVoiceChannel.OwnerID,
 	}
-
 	_, err := b.db.updateTemporaryVoiceChannel(temporaryVoiceChannel.ID, params)
 	if err != nil {
 		slog.Error("Unable to update temporary voice channel in database",
