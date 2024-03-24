@@ -239,10 +239,56 @@ func (db database) temporaryVoiceChannels(filter temporaryVoiceChannelFilter) ([
 
 func (db database) createTemporaryVoiceChannel(params temporaryVoiceChannelParams) (temporaryVoiceChannel, error) {
 	query, args, err := squirrel.Insert("temporary_voice_channels").
-		Columns("guild_id, channel_snowflake_id, owner_snowflake_id").
-		Values(params.guildID, params.channelSnowflakeID, params.ownerSnowflakeID).
+		Columns("guild_id, channel_snowflake_id, user_count, owner_snowflake_id").
+		Values(params.guildID, params.channelSnowflakeID, params.userCount, params.ownerSnowflakeID).
 		Suffix("RETURNING *").
 		ToSql()
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	row := db.db.QueryRowx(query, args...)
+
+	var i temporaryVoiceChannel
+	err = row.StructScan(&i)
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	return i, nil
+}
+
+func (db database) updateTemporaryVoiceChannel(id int64, params temporaryVoiceChannelParams) (temporaryVoiceChannel, error) {
+	query, args, err := squirrel.Update("temporary_voice_channels").
+		Set("guild_id", params.guildID).
+		Set("channel_snowflake_id", params.channelSnowflakeID).
+		Set("user_count", params.userCount).
+		Set("owner_snowflake_id", params.ownerSnowflakeID).
+		Where(squirrel.Eq{"id": id}).
+		Suffix("RETURNING *").
+		ToSql()
+
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	row := db.db.QueryRowx(query, args...)
+
+	var i temporaryVoiceChannel
+	err = row.StructScan(&i)
+	if err != nil {
+		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
+	}
+
+	return i, nil
+}
+
+func (db database) deleteTemporaryVoiceChannel(id int64) (temporaryVoiceChannel, error) {
+	query, args, err := squirrel.Delete("temporary_voice_channels").
+		Where(squirrel.Eq{"id": id}).
+		Suffix("RETURNING *").
+		ToSql()
+
 	if err != nil {
 		return temporaryVoiceChannel{}, joinErrors(ErrSQLInternal, err)
 	}

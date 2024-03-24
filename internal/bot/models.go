@@ -39,12 +39,14 @@ type temporaryVoiceChannel struct {
 	ID                 int64  `db:"id"`
 	GuildID            int64  `db:"guild_id"`
 	ChannelSnowflakeID string `db:"channel_snowflake_id"`
+	UserCount          int64  `db:"user_count"`
 	OwnerSnowflakeID   string `db:"owner_snowflake_id"`
 }
 
 type temporaryVoiceChannelParams struct {
 	guildID            int64
 	channelSnowflakeID string
+	userCount          int64
 	ownerSnowflakeID   string
 }
 
