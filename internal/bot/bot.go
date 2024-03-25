@@ -112,16 +112,6 @@ func Run(token string, guildID string, db *sqlx.DB) {
 	slog.Info("Shutting down")
 }
 
-func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *dgo.InteractionCreate) {
-	s.InteractionRespond(e.Interaction, &dgo.InteractionResponse{
-		Type: dgo.InteractionResponseChannelMessageWithSource,
-		Data: &dgo.InteractionResponseData{
-			Flags:   dgo.MessageFlagsEphemeral,
-			Content: message,
-		},
-	})
-}
-
 func snowflakeToID(snowflake string) int64 {
 	id, err := strconv.ParseInt(snowflake, 10, 64)
 	if err != nil {
@@ -133,6 +123,16 @@ func snowflakeToID(snowflake string) int64 {
 
 func idToSnowflake(id int64) string {
 	return fmt.Sprintf("%v", id)
+}
+
+func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *dgo.InteractionCreate) {
+	s.InteractionRespond(e.Interaction, &dgo.InteractionResponse{
+		Type: dgo.InteractionResponseChannelMessageWithSource,
+		Data: &dgo.InteractionResponseData{
+			Flags:   dgo.MessageFlagsEphemeral,
+			Content: message,
+		},
+	})
 }
 
 func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
