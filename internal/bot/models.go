@@ -36,5 +36,6 @@ type temporaryVoiceChannelFilter struct {
 	id        int64
 	guildID   int64
 	userCount int64
+	ownerID   int64
 	limit     uint64
 }

@@ -119,6 +119,9 @@ func (db database) temporaryVoiceChannels(filter temporaryVoiceChannelFilter) ([
 	if filter.userCount != 0 {
 		builder = builder.Where(squirrel.Eq{"user_count": filter.userCount})
 	}
+	if filter.ownerID != 0 {
+		builder = builder.Where(squirrel.Eq{"owner_id": filter.ownerID})
+	}
 
 	if filter.limit != 0 {
 		builder = builder.Limit(filter.limit)

@@ -61,21 +61,21 @@ func Run(token string, guildID string, db *sqlx.DB) {
 			},
 			handler: b.interactionCreateAdd,
 		},
-		// "kick": {
-		// 	command: &dgo.ApplicationCommand{
-		// 		Name:        "kick",
-		// 		Description: "Kick user from temporary voice channel",
-		// 		Options: []*dgo.ApplicationCommandOption{
-		// 			{
-		// 				Type:        dgo.ApplicationCommandOptionMentionable,
-		// 				Name:        "user",
-		// 				Description: "User to kick",
-		// 				Required:    true,
-		// 			},
-		// 		},
-		// 	},
-		// 	handler: b.interactionCreateKick,
-		// },
+		"kick": {
+			command: &dgo.ApplicationCommand{
+				Name:        "kick",
+				Description: "Kick user from temporary voice channel",
+				Options: []*dgo.ApplicationCommandOption{
+					{
+						Type:        dgo.ApplicationCommandOptionMentionable,
+						Name:        "user",
+						Description: "User to kick",
+						Required:    true,
+					},
+				},
+			},
+			handler: b.interactionCreateKick,
+		},
 	}
 
 	b.session.AddHandler(func(s *dgo.Session, i *dgo.InteractionCreate) {
@@ -116,6 +116,7 @@ func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *d
 	s.InteractionRespond(e.Interaction, &dgo.InteractionResponse{
 		Type: dgo.InteractionResponseChannelMessageWithSource,
 		Data: &dgo.InteractionResponseData{
+			Flags:   dgo.MessageFlagsEphemeral,
 			Content: message,
 		},
 	})
@@ -124,7 +125,7 @@ func (b *bot) interactionRespondWithMessage(message string, s *dgo.Session, e *d
 func snowflakeToID(snowflake string) int64 {
 	id, err := strconv.ParseInt(snowflake, 10, 64)
 	if err != nil {
-		slog.Error("Unable to convert snowflake to int", "error", err)
+		slog.Error("Unable to convert snowflake to ID", "error", err)
 	}
 
 	return id
@@ -181,42 +182,66 @@ func (b *bot) interactionCreateAdd(s *dgo.Session, e *dgo.InteractionCreate) {
 		"command", "add")
 }
 
-// func (b *bot) interactionCreateKick(s *dgo.Session, e *dgo.InteractionCreate) {
-// 	options := make(map[string]*dgo.ApplicationCommandInteractionDataOption, len(e.ApplicationCommandData().Options))
-// 	for _, option := range e.ApplicationCommandData().Options {
-// 		options[option.Name] = option
-// 	}
+func (b *bot) interactionCreateKick(s *dgo.Session, e *dgo.InteractionCreate) {
+	options := make(map[string]*dgo.ApplicationCommandInteractionDataOption, len(e.ApplicationCommandData().Options))
+	for _, option := range e.ApplicationCommandData().Options {
+		options[option.Name] = option
+	}
+	userID := options["user"].Value.(string)
 
-// 	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{ownerSnowflakeID: e.User.ID})
-// 	if err != nil {
-// 		b.interactionRespondWithMessage("Internal error", s, e)
-// 		slog.Error("Unable to get temporary voice channel from database",
-// 			"event", "InteractionCreate",
-// 			"command", "kick",
-// 			"error", err)
-// 		return
-// 	}
-// 	if !ok {
-// 		b.interactionRespondWithMessage("You do not own a channel", s, e)
-// 		slog.Info("User tried to kick but is not a channel owner",
-// 			"event", "InteractionCreate",
-// 			"command", "kick")
-// 		return
-// 	}
+	temporaryVoiceChannel, ok, err := b.db.temporaryVoiceChannel(temporaryVoiceChannelFilter{ownerID: snowflakeToID(e.Member.User.ID)})
+	if err != nil {
+		b.interactionRespondWithMessage("Internal error", s, e)
+		slog.Error("Unable to get temporary voice channel from database",
+			"event", "InteractionCreate",
+			"command", "kick",
+			"error", err)
+		return
+	}
+	if !ok {
+		b.interactionRespondWithMessage("You do not own a channel", s, e)
+		slog.Info("User tried to kick but is not a channel owner",
+			"event", "InteractionCreate",
+			"command", "kick")
+		return
+	}
 
-// 	err = s.GuildMemberMove(e.GuildID, options["user"].StringValue(), nil)
-// 	if err != nil {
-// 		slog.Error("Unable to kick user",
-// 			"event", "InteractionCreate",
-// 			"command", "kick",
-// 			"error", err)
-// 		return
-// 	}
+	discordGuild, err := s.State.Guild(e.GuildID)
+	if err != nil {
+		b.interactionRespondWithMessage("Unable to get guild state from Discord", s, e)
+		slog.Info("Unable to get guild state from Discord",
+			"event", "InteractionCreate",
+			"command", "kick")
+		return
+	}
 
-// 	slog.Info("User kicked from temporary voice channel",
-// 		"event", "InteractionCreate",
-// 		"command", "kick")
-// }
+	for _, state := range discordGuild.VoiceStates {
+		if state.UserID != userID {
+			fmt.Println("User IDs do not match")
+			continue
+		}
+
+		if state.ChannelID != idToSnowflake(temporaryVoiceChannel.ID) {
+			fmt.Println("Channel IDs do not match")
+			continue
+		}
+
+		err = s.GuildMemberMove(e.GuildID, userID, nil)
+		if err != nil {
+			b.interactionRespondWithMessage("Unable to kick user", s, e)
+			slog.Error("Unable to kick user",
+				"event", "InteractionCreate",
+				"command", "kick",
+				"error", err)
+			return
+		}
+
+		b.interactionRespondWithMessage("User kicked", s, e)
+		slog.Info("User kicked from temporary voice channel",
+			"event", "InteractionCreate",
+			"command", "kick")
+	}
+}
 
 func (b *bot) voiceStateUpdate(s *dgo.Session, e *dgo.VoiceStateUpdate) {
 	userLeft := e.ChannelID == ""
